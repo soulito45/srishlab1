@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Chart Builder - {{ ds.original_name }} - IDAA{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex align-items-center gap-2 mb-4">
+    <a href="{{ url_for('analysis', dataset_id=ds.id) }}" class="btn btn-icon" aria-label="Back to analysis"><i class="bi bi-arrow-left" aria-hidden="true"></i></a>
+    <div>
+      <h3 class="mb-0">Chart Builder</h3>
+      <p class="section-sub mb-0">{{ ds.original_name }} — build any chart interactively.</p>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-3">
+      <div class="glass-card">
+        <label class="form-label">Chart Type</label>
+        <select id="chartType" class="form-select mb-3">
+          <option value="bar">Bar Chart</option>
+          <option value="line">Line Chart</option>
+          <option value="scatter">Scatter Plot</option>
+          <option value="pie">Pie Chart</option>
+          <option value="box">Box Plot</option>
+          <option value="histogram">Histogram</option>
+        </select>
+
+        <label class="form-label">X-Axis / Category</label>
+        <select id="xCol" class="form-select mb-3">
+          {% for c in all_cols %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        </select>
+
+        <div id="yColWrap" class="mb-3">
+          <label class="form-label">Y-Axis (numeric)</label>
+          <select id="yCol" class="form-select">
+            {% for c in numeric_cols %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <div id="aggFuncWrap" class="mb-3">
+          <label class="form-label">Aggregation</label>
+          <select id="aggFunc" class="form-select">
+            <option value="sum">Sum</option>
+            <option value="mean">Average</option>
+            <option value="count">Count</option>
+            <option value="max">Max</option>
+            <option value="min">Min</option>
+          </select>
+        </div>
+
+        <button class="btn btn-idaa w-100" id="generateBtn"><i class="bi bi-magic me-2"></i>Generate Chart</button>
+      </div>
+    </div>
+
+    <div class="col-lg-9">
+      <div class="chart-box" style="min-height: 480px;">
+        <div id="mainChart" style="width:100%; min-height:460px;"></div>
+        <div id="chartPlaceholder" class="empty-state">
+          <i class="bi bi-bar-chart-line"></i>
+          <p>Configure your chart on the left and click <strong>Generate Chart</strong>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const DATASET_ID = {{ ds.id }};
+const CSRF_TOKEN = {{ csrf_token|tojson }};
+
+function updateFieldVisibility() {
+  const type = document.getElementById("chartType").value;
+  const needsY = ["bar", "line", "scatter", "box"].includes(type);
+  const needsAgg = ["bar", "line"].includes(type);
+  document.getElementById("yColWrap").style.display = needsY ? "block" : "none";
+  document.getElementById("aggFuncWrap").style.display = needsAgg ? "block" : "none";
+}
+document.getElementById("chartType").addEventListener("change", updateFieldVisibility);
+updateFieldVisibility();
+
+document.getElementById("generateBtn").addEventListener("click", () => {
+  const payload = {
+    chart_type: document.getElementById("chartType").value,
+    x_col: document.getElementById("xCol").value,
+    y_col: document.getElementById("yCol").value,
+    agg_func: document.getElementById("aggFunc").value
+  };
+  fetch(`/api/chart/${DATASET_ID}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF_TOKEN },
+    body: JSON.stringify(payload)
+  })
+  .then(async res => { const data = await res.json(); if (!res.ok) throw new Error(data.error || "The chart request failed."); return data; })
+  .then(data => {
+    if (data.error) { alert("Error: " + data.error); return; }
+    document.getElementById("chartPlaceholder").style.display = "none";
+    renderPlot("mainChart", data);
+  })
+  .catch(error => {
+    const message = document.createElement("div");
+    message.className = "alert idaa-alert alert-danger mt-3";
+    message.setAttribute("role", "alert");
+    message.textContent = error.message || "The chart could not be generated.";
+    document.querySelector(".chart-box").prepend(message);
+  });
+});
+</script>
+{% endblock %}

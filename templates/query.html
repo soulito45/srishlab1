@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Query Builder - {{ ds.original_name }} - IDAA{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex align-items-center gap-2 mb-4">
+    <a href="{{ url_for('analysis', dataset_id=ds.id) }}" class="btn btn-icon" aria-label="Back to analysis"><i class="bi bi-arrow-left" aria-hidden="true"></i></a>
+    <div>
+      <h3 class="mb-0">Query Builder</h3>
+      <p class="section-sub mb-0">{{ ds.original_name }} — filter and group without writing any code.</p>
+    </div>
+  </div>
+
+  <ul class="nav idaa-tabs mb-3">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-filter" type="button">Filter Rows</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-group" type="button">Group &amp; Aggregate</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- FILTER TAB -->
+    <div class="tab-pane fade show active" id="tab-filter">
+      <div class="glass-card mb-3">
+        <div id="filterRows"></div>
+        <button class="btn btn-idaa-outline btn-sm mt-2" id="addFilterBtn"><i class="bi bi-plus-lg me-1"></i>Add Filter</button>
+        <button class="btn btn-idaa mt-2 ms-2" id="runFilterBtn"><i class="bi bi-play-fill me-1"></i>Run Query</button>
+      </div>
+
+      <div id="filterResultsWrap" class="glass-card d-none">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0"><span id="matchedCount">0</span> rows matched</h6>
+          <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-idaa-outline btn-sm" id="prevPage" aria-label="Previous page"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+            <span class="small text-muted">Page <span id="currentPage">1</span> / <span id="totalPages">1</span></span>
+            <button class="btn btn-idaa-outline btn-sm" id="nextPage" aria-label="Next page"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="idaa-table" id="filterTable">
+            <thead><tr id="filterTableHead"></tr></thead>
+            <tbody id="filterTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- GROUP TAB -->
+    <div class="tab-pane fade" id="tab-group">
+      <div class="glass-card mb-3">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Group By (category)</label>
+            <select id="groupCol" class="form-select">
+              {% for c in all_cols %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Aggregate Column</label>
+            <select id="aggCol" class="form-select">
+              {% for c in all_cols %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Aggregate Function</label>
+            <select id="aggFunc" class="form-select">
+              <option value="sum">Sum</option>
+              <option value="mean">Average</option>
+              <option value="count">Count</option>
+              <option value="max">Max</option>
+              <option value="min">Min</option>
+              <option value="median">Median</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-idaa mt-3" id="runGroupBtn"><i class="bi bi-play-fill me-1"></i>Run Grouping</button>
+      </div>
+
+      <div id="groupResultsWrap" class="d-none">
+        <div class="chart-box mb-3"><div id="groupChart" style="width:100%;"></div></div>
+        <div class="glass-card">
+          <div class="table-scroll">
+            <table class="idaa-table" id="groupTable">
+              <thead><tr id="groupTableHead"></tr></thead>
+              <tbody id="groupTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const ALL_COLUMNS = {{ all_cols|tojson }};
+const NUMERIC_COLUMNS = {{ numeric_cols|tojson }};
+const DATASET_ID = {{ ds.id }};
+const CSRF_TOKEN = {{ csrf_token|tojson }};
+let filterRowCount = 0;
+let currentPage = 1;
+let currentFilters = [];
+
+const OPERATORS = [
+  ["equals", "Equals"], ["not_equals", "Not equals"],
+  ["greater_than", "Greater than"], ["less_than", "Less than"],
+  ["greater_equal", "Greater or equal"], ["less_equal", "Less or equal"],
+  ["contains", "Contains"]
+];
+
+function addFilterRow() {
+  filterRowCount++;
+  const id = filterRowCount;
+  const colOptions = ALL_COLUMNS.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  const opOptions = OPERATORS.map(o => `<option value="${o[0]}">${o[1]}</option>`).join("");
+
+  const row = document.createElement("div");
+  row.className = "filter-row row g-2 align-items-center";
+  row.id = `filter-${id}`;
+  row.innerHTML = `
+    <div class="col-md-4"><select class="form-select form-select-sm filter-col">${colOptions}</select></div>
+    <div class="col-md-3"><select class="form-select form-select-sm filter-op">${opOptions}</select></div>
+    <div class="col-md-4"><input type="text" class="form-control form-control-sm filter-val" placeholder="Value"></div>
+    <div class="col-md-1"><button class="btn btn-idaa-danger btn-sm w-100" aria-label="Remove filter" onclick="document.getElementById('filter-${id}').remove()"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div>
+  `;
+  document.getElementById("filterRows").appendChild(row);
+}
+document.getElementById("addFilterBtn").addEventListener("click", addFilterRow);
+addFilterRow();
+
+function collectFilters() {
+  const rows = document.querySelectorAll("#filterRows .filter-row");
+  const filters = [];
+  rows.forEach(r => {
+    filters.push({
+      column: r.querySelector(".filter-col").value,
+      operator: r.querySelector(".filter-op").value,
+      value: r.querySelector(".filter-val").value
+    });
+  });
+  return filters;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+  }[character]));
+}
+
+function showQueryError(error) {
+  const alert = document.createElement("div");
+  alert.className = "alert idaa-alert alert-danger mt-3";
+  alert.setAttribute("role", "alert");
+  alert.textContent = error.message || "The query could not be completed.";
+  document.querySelector("#tab-filter .glass-card").prepend(alert);
+}
+
+function runFilter(page) {
+  currentPage = page || 1;
+  currentFilters = collectFilters();
+  fetch(`/api/filter/${DATASET_ID}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF_TOKEN },
+    body: JSON.stringify({ filters: currentFilters, page: currentPage })
+  })
+  .then(async res => { const data = await res.json(); if (!res.ok) throw new Error(data.error || "The filter request failed."); return data; })
+  .then(data => {
+    document.getElementById("filterResultsWrap").classList.remove("d-none");
+    document.getElementById("matchedCount").textContent = data.total_matched.toLocaleString();
+    document.getElementById("currentPage").textContent = data.current_page;
+    document.getElementById("totalPages").textContent = data.total_pages;
+
+    const head = document.getElementById("filterTableHead");
+    head.innerHTML = data.columns.map(c => `<th>${escapeHtml(c)}</th>`).join("");
+
+    const body = document.getElementById("filterTableBody");
+    body.innerHTML = data.rows.map(row =>
+      "<tr>" + data.columns.map(c => `<td>${escapeHtml(row[c])}</td>`).join("") + "</tr>"
+    ).join("") || `<tr><td colspan="${data.columns.length}" class="text-center text-muted py-3">No matching rows</td></tr>`;
+  })
+  .catch(showQueryError);
+}
+
+document.getElementById("runFilterBtn").addEventListener("click", () => runFilter(1));
+document.getElementById("prevPage").addEventListener("click", () => { if (currentPage > 1) runFilter(currentPage - 1); });
+document.getElementById("nextPage").addEventListener("click", () => runFilter(currentPage + 1));
+
+// GROUP TAB
+document.getElementById("runGroupBtn").addEventListener("click", () => {
+  const payload = {
+    group_col: document.getElementById("groupCol").value,
+    agg_col: document.getElementById("aggCol").value,
+    agg_func: document.getElementById("aggFunc").value
+  };
+  fetch(`/api/group/${DATASET_ID}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": CSRF_TOKEN },
+    body: JSON.stringify(payload)
+  })
+  .then(async res => { const data = await res.json(); if (!res.ok) throw new Error(data.error || "The grouping request failed."); return data; })
+  .then(data => {
+    if (data.error) { alert(data.error); return; }
+    document.getElementById("groupResultsWrap").classList.remove("d-none");
+    renderPlot("groupChart", data.chart);
+
+    const head = document.getElementById("groupTableHead");
+    head.innerHTML = data.columns.map(c => `<th>${escapeHtml(c)}</th>`).join("");
+    const body = document.getElementById("groupTableBody");
+    body.innerHTML = data.rows.map(row =>
+      "<tr>" + data.columns.map(c => `<td>${escapeHtml(row[c])}</td>`).join("") + "</tr>"
+    ).join("");
+  })
+  .catch(showQueryError);
+});
+</script>
+{% endblock %}

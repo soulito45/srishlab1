@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Analysis - {{ ds.original_name }} - IDAA{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+    <div>
+      <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-icon" aria-label="Back to dashboard"><i class="bi bi-arrow-left" aria-hidden="true"></i></a>
+        <h3 class="mb-0">{{ ds.original_name }}</h3>
+      </div>
+      <p class="section-sub mb-0 mt-1">{{ overview.n_rows }} rows &middot; {{ overview.n_cols }} columns &middot; {{ ds.file_size_kb|round(1) }} KB</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{{ url_for('query_page', dataset_id=ds.id) }}" class="btn btn-idaa-outline"><i class="bi bi-funnel me-1"></i>Query Builder</a>
+      <a href="{{ url_for('visualize', dataset_id=ds.id) }}" class="btn btn-idaa-outline"><i class="bi bi-bar-chart me-1"></i>Chart Builder</a>
+      <a href="{{ url_for('download_cleaned', dataset_id=ds.id) }}" class="btn btn-idaa-outline"><i class="bi bi-download me-1"></i>Cleaned CSV</a>
+      <a href="{{ url_for('report', dataset_id=ds.id) }}" class="btn btn-idaa-accent"><i class="bi bi-file-earmark-pdf me-1"></i>Export PDF</a>
+    </div>
+  </div>
+
+  <!-- Overview stat cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Rows</div>
+        <div class="stat-value">{{ "{:,}".format(overview.n_rows) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Columns</div>
+        <div class="stat-value">{{ overview.n_cols }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Missing Values</div>
+        <div class="stat-value">{{ "{:,}".format(overview.total_missing) }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-label">Duplicate Rows</div>
+        <div class="stat-value">{{ overview.duplicate_rows }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="glass-card mb-4">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div>
+        <h5 class="mb-1"><i class="bi bi-shield-check text-success me-2"></i>Data quality pass complete</h5>
+        <p class="text-muted small mb-0">Analysis uses normalized headers, cleaned text, standardized missing values, and validated numeric/date fields.</p>
+      </div>
+      <span class="idaa-chip">{{ cleaning_report.final_rows }} rows &middot; {{ cleaning_report.final_columns }} columns</span>
+    </div>
+    <div class="small text-muted mt-3">
+      Removed {{ cleaning_report.removed_duplicate_rows }} duplicate rows and {{ cleaning_report.removed_empty_rows }} empty rows.
+      Converted {{ cleaning_report.converted_numeric_columns|length }} numeric and {{ cleaning_report.converted_date_columns|length }} date columns.
+      {% if cleaning_report.malformed_rows_skipped %}Skipped {{ cleaning_report.malformed_rows_skipped }} malformed CSV rows.{% endif %}
+      {% if cleaning_report.removed_empty_columns %}Dropped {{ cleaning_report.removed_empty_columns|length }} empty columns.{% endif %}
+      {% if cleaning_report.removed_unnamed_columns %}Removed {{ cleaning_report.removed_unnamed_columns|length }} unnamed CSV artifact columns from {{ cleaning_report.rows_with_unnamed_data }} rows.{% endif %}
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav idaa-tabs mb-3" id="analysisTabs" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-overview" type="button">Column Profile</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-charts" type="button">Charts</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-preview" type="button">Data Preview</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- Column profile tab -->
+    <div class="tab-pane fade show active" id="tab-overview">
+      <div class="glass-card">
+        <div class="table-scroll">
+          <table class="idaa-table">
+            <thead><tr>
+              <th>Column</th><th>Type</th><th>Missing</th><th>Missing %</th><th>Zeros</th><th>Unique</th><th>Stats</th>
+            </tr></thead>
+            <tbody>
+              {% for p in profiles %}
+              <tr>
+                <td class="fw-semibold">{{ p.name }}</td>
+                <td><span class="idaa-chip">{{ p.dtype }}</span></td>
+                <td>{{ p.missing }}</td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="progress progress-thin" style="width:70px;"><div class="progress-bar" style="width:{{ p.missing_pct }}%"></div></div>
+                    <span class="small">{{ p.missing_pct }}%</span>
+                  </div>
+                </td>
+                <td>{{ p.zeros if p.zeros is defined else "-" }}</td>
+                <td>{{ p.unique }}</td>
+                <td class="small text-muted">
+                  {% if p.mean is defined %}
+                    mean: {{ p.mean }} &middot; min: {{ p.min }} &middot; max: {{ p.max }}
+                  {% else %}
+                    top: {{ p.top_value }}
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts tab -->
+    <div class="tab-pane fade" id="tab-charts">
+      <div class="row g-3">
+        {% if corr_chart %}
+        <div class="col-lg-6">
+          <div class="chart-box"><div id="corrChart" style="width:100%;"></div></div>
+        </div>
+        {% endif %}
+        {% if missing_chart %}
+        <div class="col-lg-6">
+          <div class="chart-box"><div id="missingChart" style="width:100%;"></div></div>
+        </div>
+        {% endif %}
+        {% for col, chart in dist_charts.items() %}
+        <div class="col-lg-6">
+          <div class="chart-box"><div id="dist-{{ loop.index }}" style="width:100%;"></div></div>
+        </div>
+        {% endfor %}
+        {% for col, chart in cat_charts.items() %}
+        <div class="col-lg-6">
+          <div class="chart-box"><div id="cat-{{ loop.index }}" style="width:100%;"></div></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Data preview tab -->
+    <div class="tab-pane fade" id="tab-preview">
+      <div class="glass-card">
+        <div class="table-scroll">
+          <table class="idaa-table">
+            <thead><tr>{% for c in preview_cols %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+            <tbody>
+              {% for row in preview_rows %}
+              <tr>{% for c in preview_cols %}<td>{{ row[c] }}</td>{% endfor %}</tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted small mt-2 mb-0">Showing first 10 rows of {{ overview.n_rows }} total.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  {% if corr_chart %} renderPlot("corrChart", {{ corr_chart|tojson }}); {% endif %}
+  {% if missing_chart %} renderPlot("missingChart", {{ missing_chart|tojson }}); {% endif %}
+  {% for col, chart in dist_charts.items() %}
+    renderPlot("dist-{{ loop.index }}", {{ chart|tojson }});
+  {% endfor %}
+  {% for col, chart in cat_charts.items() %}
+    renderPlot("cat-{{ loop.index }}", {{ chart|tojson }});
+  {% endfor %}
+</script>
+{% endblock %}

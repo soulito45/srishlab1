@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - IDAA{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="dashboard-hero d-flex flex-wrap justify-content-between align-items-end mb-4">
+    <div>
+      <div class="hero-badge mb-3"><i class="bi bi-activity"></i> Workspace / live signal</div>
+      <h2 class="section-heading">Good to see you, {{ current_user.full_name or current_user.username }}.</h2>
+      <p class="section-sub mb-0">Your datasets, quality signals, and next analysis in one place.</p>
+    </div>
+    <a href="{{ url_for('upload') }}" class="btn btn-idaa"><i class="bi bi-plus-lg me-2"></i>Start an analysis</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="stat-label">Datasets</div>
+            <div class="stat-value">{{ datasets|length }}</div>
+          </div>
+          <div class="stat-icon"><i class="bi bi-database-fill"></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="stat-label">Rows Analyzed</div>
+            <div class="stat-value">{{ "{:,}".format(total_rows_analyzed) }}</div>
+          </div>
+          <div class="stat-icon"><i class="bi bi-table"></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <div class="stat-label">Account</div>
+            <div class="stat-value" style="font-size:1.1rem;">{{ current_user.username }}</div>
+          </div>
+          <div class="stat-icon"><i class="bi bi-person-badge"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="section-heading">Your Datasets</h4>
+  {% if datasets|length == 0 %}
+    <div class="glass-card empty-state">
+      <i class="bi bi-cloud-arrow-up"></i>
+      <h5>No datasets yet</h5>
+      <p class="text-muted small">Upload your first CSV or Excel file to get instant analysis.</p>
+      <a href="{{ url_for('upload') }}" class="btn btn-idaa mt-2"><i class="bi bi-plus-lg me-2"></i>Upload Dataset</a>
+    </div>
+  {% else %}
+    <div class="row g-3">
+      {% for ds in datasets %}
+      <div class="col-md-6 col-lg-4">
+        <div class="dataset-card">
+          <div class="d-flex justify-content-between align-items-start mb-3">
+            <div class="dataset-file-icon"><i class="bi bi-file-earmark-spreadsheet"></i></div>
+            <span class="idaa-chip">{{ ds.n_rows }} rows &times; {{ ds.n_columns }} cols</span>
+          </div>
+          <h6 class="mb-1 text-truncate" title="{{ ds.original_name }}">{{ ds.original_name }}</h6>
+          <p class="text-muted small mb-3">{{ ds.description or "No description added." }}</p>
+          <p class="text-muted small mb-3"><i class="bi bi-clock-history me-1"></i>{{ ds.uploaded_at.strftime('%d %b %Y, %I:%M %p') }}</p>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ url_for('analysis', dataset_id=ds.id) }}" class="btn btn-idaa btn-sm flex-fill"><i class="bi bi-graph-up me-1"></i>Analyze</a>
+            <a href="{{ url_for('query_page', dataset_id=ds.id) }}" class="btn btn-idaa-outline btn-sm" aria-label="Query {{ ds.original_name }}"><i class="bi bi-funnel" aria-hidden="true"></i></a>
+            <a href="{{ url_for('visualize', dataset_id=ds.id) }}" class="btn btn-idaa-outline btn-sm" aria-label="Chart {{ ds.original_name }}"><i class="bi bi-bar-chart" aria-hidden="true"></i></a>
+            <form method="POST" action="{{ url_for('delete_dataset', dataset_id=ds.id) }}" onsubmit="return confirm('Delete this dataset permanently?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-idaa-danger btn-sm" aria-label="Delete {{ ds.original_name }}"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

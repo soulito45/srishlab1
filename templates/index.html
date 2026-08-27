@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Srish Data Lab{% endblock %}
+
+{% block content %}
+<section class="hero-section container">
+  <div class="row align-items-center">
+    <div class="col-lg-7">
+      <div class="hero-kicker"><span class="signal-dot"></span> local analysis / no black box</div>
+      <h1 class="hero-title">Raw rows in.<br><span class="grad">Clear signals out.</span></h1>
+      <p class="hero-sub">
+        Srish Data Lab turns messy CSV and Excel files into an analysis-ready workspace.
+        See what changed, find what matters, and take the cleaned data with you.
+      </p>
+      <div class="d-flex gap-3 mt-4 flex-wrap">
+        <a href="{{ url_for('register') }}" class="btn btn-idaa btn-lg"><i class="bi bi-arrow-up-right me-2"></i>Open the lab</a>
+        <a href="{{ url_for('login') }}" class="btn btn-idaa-outline btn-lg">Sign in <i class="bi bi-arrow-right ms-2"></i></a>
+      </div>
+      <div class="d-flex gap-4 mt-4 flex-wrap">
+        <div><i class="bi bi-check2 text-success me-1"></i> no account fees</div>
+        <div><i class="bi bi-check2 text-success me-1"></i> runs locally</div>
+        <div><i class="bi bi-check2 text-success me-1"></i> your files stay yours</div>
+      </div>
+    </div>
+    <div class="col-lg-5 mt-5 mt-lg-0">
+      <div class="signal-panel">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <span class="idaa-chip chip-accent"><i class="bi bi-activity me-1"></i>quality scan</span>
+          <span class="signal-file">sales_data.csv</span>
+        </div>
+        <div class="signal-reading"><span class="signal-number">92</span><span class="signal-unit">%</span><span class="signal-caption">usable<br>signal</span></div>
+        <div class="signal-bars" aria-label="Data quality trend">
+          <i style="--bar: 42%"></i><i style="--bar: 67%"></i><i style="--bar: 55%"></i><i style="--bar: 82%"></i><i style="--bar: 73%"></i><i style="--bar: 94%"></i><i style="--bar: 86%"></i><i style="--bar: 100%"></i><i style="--bar: 91%"></i><i style="--bar: 100%"></i><i style="--bar: 96%"></i><i style="--bar: 100%"></i>
+        </div>
+        <div class="signal-footer"><span><b>400</b> rows</span><span><b>13</b> fields</span><span class="text-success"><i class="bi bi-check-circle me-1"></i>scan complete</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5">
+  <div class="workflow-heading"><span class="hero-kicker">the workflow / 04 moves</span><h2 class="section-heading">Make the mess legible.</h2></div>
+  <div class="workflow-list">
+    <div class="workflow-row"><span class="workflow-index">01</span><i class="bi bi-cloud-arrow-up"></i><div><h5>Drop the file</h5><p>CSV or Excel. No schema ceremony.</p></div><span class="workflow-arrow">↗</span></div>
+    <div class="workflow-row"><span class="workflow-index">02</span><i class="bi bi-brush"></i><div><h5>Repair the signal</h5><p>Whitespace, types, blanks, duplicates, malformed rows.</p></div><span class="workflow-arrow">↗</span></div>
+    <div class="workflow-row"><span class="workflow-index">03</span><i class="bi bi-bezier2"></i><div><h5>Read the shape</h5><p>Profiles, distributions, correlations, and patterns.</p></div><span class="workflow-arrow">↗</span></div>
+    <div class="workflow-row"><span class="workflow-index">04</span><i class="bi bi-box-arrow-up-right"></i><div><h5>Leave with evidence</h5><p>Query it, chart it, or download the cleaned data.</p></div><span class="workflow-arrow">↗</span></div>
+  </div>
+</section>
+
+<section class="container py-4 pb-5">
+  <div class="footer-cta d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 p-4">
+    <div>
+      <h4 class="mb-1">Ready to analyze your data?</h4>
+      <p class="text-muted mb-0">Create a free account and upload your first dataset in under a minute.</p>
+    </div>
+    <a href="{{ url_for('register') }}" class="btn btn-idaa btn-lg text-nowrap"><i class="bi bi-arrow-right-circle me-2"></i>Create Account</a>
+  </div>
+</section>
+{% endblock %}
