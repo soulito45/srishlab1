@@ -26,9 +26,11 @@ def clean_dataframe(df):
         "original_rows": int(len(df)),
         "original_columns": int(len(df.columns)),
         "trimmed_cells": 0,
+        "filled_missing_values": 0,
         "converted_numeric_columns": [],
         "converted_date_columns": [],
         "removed_empty_rows": 0,
+        "removed_high_missing_rows": 0,
         "removed_empty_columns": [],
         "removed_unnamed_columns": [],
         "rows_with_unnamed_data": 0,
@@ -52,6 +54,10 @@ def clean_dataframe(df):
         report["trimmed_cells"] += int(trimmed.sum())
         df[column] = df[column].replace(MISSING_VALUES, np.nan)
 
+    report["original_missing_by_column"] = {
+        str(column): int(df[column].isna().sum()) for column in df.columns
+    }
+
     # Convert columns that are overwhelmingly numeric, including common CSV formatting.
     for column in df.select_dtypes(include=["object", "string"]).columns:
         normalized = df[column].astype("string").str.replace(r"[$€£₹,]", "", regex=True)
@@ -72,6 +78,7 @@ def clean_dataframe(df):
             df[column] = parsed
             report["converted_date_columns"].append(column)
 
+    # Remove completely empty rows
     empty_rows = df.isna().all(axis=1)
     report["removed_empty_rows"] = int(empty_rows.sum())
     df = df.loc[~empty_rows].copy()
@@ -87,13 +94,32 @@ def clean_dataframe(df):
     if empty_columns:
         df = df.drop(columns=empty_columns)
 
+    # Fill remaining missing values using a type-appropriate, deterministic value.
+    for column in df.columns:
+        missing_count = int(df[column].isna().sum())
+        if not missing_count:
+            continue
+        if pd.api.types.is_numeric_dtype(df[column]):
+            replacement = df[column].median()
+            if pd.isna(replacement):
+                replacement = 0
+        elif pd.api.types.is_datetime64_any_dtype(df[column]):
+            replacement = df[column].dropna().median()
+            if pd.isna(replacement):
+                replacement = pd.Timestamp("1970-01-01")
+        else:
+            mode = df[column].mode(dropna=True)
+            replacement = mode.iloc[0] if not mode.empty else "Unknown"
+        df[column] = df[column].fillna(replacement)
+        report["filled_missing_values"] += missing_count
+
     before_duplicates = len(df)
     df = df.drop_duplicates().reset_index(drop=True)
     report["removed_duplicate_rows"] = int(before_duplicates - len(df))
     report["final_rows"] = int(len(df))
     report["final_columns"] = int(len(df.columns))
     report["total_changes"] = sum([
-        report["trimmed_cells"], report["removed_empty_rows"],
+        report["trimmed_cells"], report["filled_missing_values"], report["removed_empty_rows"],
         len(report["removed_empty_columns"]), len(report["removed_unnamed_columns"]),
         report["rows_with_unnamed_data"], report["removed_duplicate_rows"],
         len(report["converted_numeric_columns"]), len(report["converted_date_columns"]),
@@ -134,6 +160,18 @@ def load_dataframe_with_report(filepath):
     return cleaned, report
 
 
+def load_raw_dataframe(filepath):
+    """Load the uploaded dataframe without applying cleaning transformations."""
+    if filepath.lower().endswith(".csv"):
+        try:
+            return pd.read_csv(filepath, encoding="utf-8", na_values=MISSING_VALUES, keep_default_na=True,
+                               engine="python")
+        except UnicodeDecodeError:
+            return pd.read_csv(filepath, encoding="latin1", na_values=MISSING_VALUES, keep_default_na=True,
+                               engine="python")
+    return pd.read_excel(filepath, na_values=MISSING_VALUES, keep_default_na=True)
+
+
 def load_dataframe(filepath):
     """Load and clean a CSV or Excel file, returning only the analysis-ready frame."""
     df, _ = load_dataframe_with_report(filepath)
@@ -157,14 +195,20 @@ def basic_overview(df):
     }
 
 
-def column_profile(df):
-    """Per-column profile: dtype, missing %, unique count, sample values."""
+def column_profile(df, original_missing_by_column=None):
+    """Per-column profile, including missing values detected before cleaning."""
     profiles = []
     n = len(df)
     for col in df.columns:
         series = df[col]
         missing = int(series.isnull().sum())
+        original_missing = (
+            original_missing_by_column.get(str(col), missing)
+            if original_missing_by_column
+            else missing
+        )
         missing_pct = round((missing / n) * 100, 2) if n else 0
+        original_missing_pct = round((original_missing / n) * 100, 2) if n else 0
         dtype = str(series.dtype)
 
         profile = {
@@ -172,6 +216,8 @@ def column_profile(df):
             "dtype": dtype,
             "missing": missing,
             "missing_pct": missing_pct,
+            "original_missing": original_missing,
+            "original_missing_pct": original_missing_pct,
             "unique": int(series.nunique()),
         }
 

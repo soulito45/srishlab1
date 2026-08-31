@@ -28,7 +28,7 @@ from werkzeug.utils import secure_filename
 import pandas as pd
 
 from config import Config
-from models import db, User, Dataset, QueryHistory
+from models import db, User, Dataset, QueryHistory, format_india_time
 from utils import eda, query_engine, report_generator
 
 # ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ login_manager.login_message_category = "warning"
 @app.context_processor
 def inject_csrf_token():
     token = session.setdefault("csrf_token", secrets.token_urlsafe(32))
-    return {"csrf_token": token}
+    return {"csrf_token": token, "format_india_time": format_india_time}
 
 
 @app.before_request
@@ -217,7 +217,7 @@ def upload():
         file.save(filepath)
 
         try:
-            df, _ = eda.load_dataframe_with_report(filepath)
+            df, cleaning_report = eda.load_dataframe_with_report(filepath)
         except Exception as e:
             os.remove(filepath)
             flash(f"Could not read the file: {e}", "danger")
@@ -258,17 +258,16 @@ def delete_dataset(dataset_id):
     return redirect(url_for("dashboard"))
 
 
-# ---------------------------------------------------------------------------
-# Analysis (Auto EDA)
-# ---------------------------------------------------------------------------
 @app.route("/analysis/<int:dataset_id>")
 @login_required
 def analysis(dataset_id):
     ds = get_owned_dataset_or_404(dataset_id)
     df, cleaning_report = eda.load_dataframe_with_report(ds.filepath)
+    original_df = eda.load_raw_dataframe(ds.filepath)
+    _, original_report = eda.clean_dataframe(original_df)
 
     overview = eda.basic_overview(df)
-    profiles = eda.column_profile(df)
+    profiles = eda.column_profile(df, original_report.get("original_missing_by_column"))
 
     missing_chart = eda.missing_value_chart(df)
     corr_chart = eda.correlation_heatmap(df)
@@ -473,11 +472,5 @@ if __name__ == "__main__":
     print("  Intelligent Data Analysis Assistant (IDAA)")
     print("  Server running at: http://127.0.0.1:5000")
     print("=" * 60)
-    # NOTE: use_reloader is disabled on purpose. The default Werkzeug
-    # auto-reloader watches the entire project folder (including
-    # uploads/ and database/) and restarts the server whenever a file
-    # is written there -- which happens on every dataset upload and can
-    # drop the in-flight request. debug=True still gives the interactive
-    # debugger on errors.
     app.run(debug=os.environ.get("FLASK_DEBUG", "0") == "1", use_reloader=False,
             host="127.0.0.1", port=5000)

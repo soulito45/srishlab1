@@ -57,11 +57,13 @@
       <span class="idaa-chip">{{ cleaning_report.final_rows }} rows &middot; {{ cleaning_report.final_columns }} columns</span>
     </div>
     <div class="small text-muted mt-3">
+      Filled {{ cleaning_report.filled_missing_values }} missing values.
       Removed {{ cleaning_report.removed_duplicate_rows }} duplicate rows and {{ cleaning_report.removed_empty_rows }} empty rows.
-      Converted {{ cleaning_report.converted_numeric_columns|length }} numeric and {{ cleaning_report.converted_date_columns|length }} date columns.
+      Normalized {{ cleaning_report.converted_numeric_columns|length }} numeric and {{ cleaning_report.converted_date_columns|length }} date columns.
       {% if cleaning_report.malformed_rows_skipped %}Skipped {{ cleaning_report.malformed_rows_skipped }} malformed CSV rows.{% endif %}
       {% if cleaning_report.removed_empty_columns %}Dropped {{ cleaning_report.removed_empty_columns|length }} empty columns.{% endif %}
       {% if cleaning_report.removed_unnamed_columns %}Removed {{ cleaning_report.removed_unnamed_columns|length }} unnamed CSV artifact columns from {{ cleaning_report.rows_with_unnamed_data }} rows.{% endif %}
+      Missing values shown below are after cleaning; a value of 0 confirms that the column is complete.
     </div>
   </div>
 
@@ -79,18 +81,18 @@
         <div class="table-scroll">
           <table class="idaa-table">
             <thead><tr>
-              <th>Column</th><th>Type</th><th>Missing</th><th>Missing %</th><th>Zeros</th><th>Unique</th><th>Stats</th>
+              <th>Column</th><th>Type</th><th>Missing before cleaning</th><th>Missing % before cleaning</th><th>Zeros</th><th>Unique</th><th>Stats</th>
             </tr></thead>
             <tbody>
               {% for p in profiles %}
               <tr>
                 <td class="fw-semibold">{{ p.name }}</td>
                 <td><span class="idaa-chip">{{ p.dtype }}</span></td>
-                <td>{{ p.missing }}</td>
+                <td>{{ p.original_missing }}</td>
                 <td>
                   <div class="d-flex align-items-center gap-2">
-                    <div class="progress progress-thin" style="width:70px;"><div class="progress-bar" style="width:{{ p.missing_pct }}%"></div></div>
-                    <span class="small">{{ p.missing_pct }}%</span>
+                    <div class="progress progress-thin" style="width:70px;"><div class="progress-bar" style="width:{{ p.original_missing_pct }}%"></div></div>
+                    <span class="small">{{ p.original_missing_pct }}%</span>
                   </div>
                 </td>
                 <td>{{ p.zeros if p.zeros is defined else "-" }}</td>

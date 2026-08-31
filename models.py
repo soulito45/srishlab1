@@ -1,9 +1,20 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
+INDIA_TIMEZONE = ZoneInfo("Asia/Kolkata")
+
+
+def format_india_time(value):
+    """Format a stored UTC timestamp in Indian Standard Time."""
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(INDIA_TIMEZONE).strftime("%d %b %Y, %I:%M %p")
 
 
 class User(UserMixin, db.Model):
@@ -51,7 +62,7 @@ class Dataset(db.Model):
             "n_rows": self.n_rows,
             "n_columns": self.n_columns,
             "file_size_kb": round(self.file_size_kb, 2),
-            "uploaded_at": self.uploaded_at.strftime("%d %b %Y, %I:%M %p"),
+            "uploaded_at": format_india_time(self.uploaded_at),
             "description": self.description or "",
         }
 

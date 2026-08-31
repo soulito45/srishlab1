@@ -67,7 +67,7 @@
           </div>
           <h6 class="mb-1 text-truncate" title="{{ ds.original_name }}">{{ ds.original_name }}</h6>
           <p class="text-muted small mb-3">{{ ds.description or "No description added." }}</p>
-          <p class="text-muted small mb-3"><i class="bi bi-clock-history me-1"></i>{{ ds.uploaded_at.strftime('%d %b %Y, %I:%M %p') }}</p>
+          <p class="text-muted small mb-3"><i class="bi bi-clock-history me-1"></i>{{ format_india_time(ds.uploaded_at) }}</p>
           <div class="d-flex gap-2 flex-wrap">
             <a href="{{ url_for('analysis', dataset_id=ds.id) }}" class="btn btn-idaa btn-sm flex-fill"><i class="bi bi-graph-up me-1"></i>Analyze</a>
             <a href="{{ url_for('query_page', dataset_id=ds.id) }}" class="btn btn-idaa-outline btn-sm" aria-label="Query {{ ds.original_name }}"><i class="bi bi-funnel" aria-hidden="true"></i></a>
