@@ -61,10 +61,12 @@ def clean_dataframe(df):
     # Convert columns that are overwhelmingly numeric, including common CSV formatting.
     for column in df.select_dtypes(include=["object", "string"]).columns:
         normalized = df[column].astype("string").str.replace(r"[$€£₹,]", "", regex=True)
+        percent_mask = normalized.str.endswith("%", na=False)
         normalized = normalized.str.replace("%", "", regex=False)
         numeric = pd.to_numeric(normalized, errors="coerce")
         non_empty = df[column].notna().sum()
         if non_empty and numeric.notna().sum() / non_empty >= 0.8:
+            numeric.loc[percent_mask] = numeric.loc[percent_mask] / 100
             df[column] = numeric
             report["converted_numeric_columns"].append(column)
 
@@ -94,6 +96,11 @@ def clean_dataframe(df):
     if empty_columns:
         df = df.drop(columns=empty_columns)
 
+    # Remove duplicates before imputation so filling values cannot create new duplicates.
+    before_duplicates = len(df)
+    df = df.drop_duplicates().reset_index(drop=True)
+    report["removed_duplicate_rows"] = int(before_duplicates - len(df))
+
     # Fill remaining missing values using a type-appropriate, deterministic value.
     for column in df.columns:
         missing_count = int(df[column].isna().sum())
@@ -113,9 +120,9 @@ def clean_dataframe(df):
         df[column] = df[column].fillna(replacement)
         report["filled_missing_values"] += missing_count
 
-    before_duplicates = len(df)
-    df = df.drop_duplicates().reset_index(drop=True)
-    report["removed_duplicate_rows"] = int(before_duplicates - len(df))
+    report["final_missing_by_column"] = {
+        str(column): int(df[column].isna().sum()) for column in df.columns
+    }
     report["final_rows"] = int(len(df))
     report["final_columns"] = int(len(df.columns))
     report["total_changes"] = sum([
@@ -195,10 +202,11 @@ def basic_overview(df):
     }
 
 
-def column_profile(df, original_missing_by_column=None):
-    """Per-column profile, including missing values detected before cleaning."""
+def column_profile(df, original_missing_by_column=None, original_row_count=None):
+    """Per-column profile with explicit before/after cleaning metrics."""
     profiles = []
     n = len(df)
+    original_n = original_row_count if original_row_count is not None else n
     for col in df.columns:
         series = df[col]
         missing = int(series.isnull().sum())
@@ -208,7 +216,7 @@ def column_profile(df, original_missing_by_column=None):
             else missing
         )
         missing_pct = round((missing / n) * 100, 2) if n else 0
-        original_missing_pct = round((original_missing / n) * 100, 2) if n else 0
+        original_missing_pct = round((original_missing / original_n) * 100, 2) if original_n else 0
         dtype = str(series.dtype)
 
         profile = {
@@ -219,6 +227,7 @@ def column_profile(df, original_missing_by_column=None):
             "original_missing": original_missing,
             "original_missing_pct": original_missing_pct,
             "unique": int(series.nunique()),
+            "complete": missing == 0,
         }
 
         if pd.api.types.is_numeric_dtype(series):
@@ -238,15 +247,21 @@ def column_profile(df, original_missing_by_column=None):
     return profiles
 
 
-def missing_value_chart(df):
-    missing = df.isnull().sum()
+def missing_value_chart(df=None, missing_by_column=None):
+    """Build a chart from missing counts before or after cleaning."""
+    if missing_by_column is not None:
+        missing = pd.Series(missing_by_column, dtype="int64")
+    elif df is not None:
+        missing = df.isnull().sum()
+    else:
+        return None
     missing = missing[missing > 0].sort_values(ascending=False)
     if missing.empty:
         return None
     fig = px.bar(
         x=missing.values, y=missing.index, orientation="h",
         labels={"x": "Missing Values", "y": "Column"},
-        title="Missing Values by Column",
+        title="Missing Values Before Cleaning",
         color=missing.values, color_continuous_scale="Reds"
     )
     fig.update_layout(template="plotly_dark", height=max(300, len(missing) * 35),
@@ -318,23 +333,6 @@ def build_custom_chart(df, chart_type, x_col, y_col=None, agg_func=None):
             else:
                 fig = px.line(grouped, x=x_col, y=y_col, markers=True,
                                title=f"{agg_func.title()} of {y_col} by {x_col}")
-
-        elif chart_type == "scatter" and y_col:
-            fig = px.scatter(df, x=x_col, y=y_col, color=y_col,
-                              color_continuous_scale="Plasma",
-                              title=f"{x_col} vs {y_col}")
-
-        elif chart_type == "pie":
-            counts = df[x_col].astype(str).value_counts().head(12).reset_index()
-            counts.columns = [x_col, "count"]
-            fig = px.pie(counts, names=x_col, values="count", title=f"Share of {x_col}",
-                         hole=0.45)
-
-        elif chart_type == "box" and y_col:
-            fig = px.box(df, x=x_col, y=y_col, color=x_col, title=f"{y_col} distribution by {x_col}")
-
-        elif chart_type == "histogram":
-            fig = px.histogram(df, x=x_col, nbins=30, title=f"Distribution of {x_col}")
 
         else:
             return {"error": "Invalid chart configuration."}

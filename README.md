@@ -1,9 +1,11 @@
-# 🧠 Intelligent Data Analysis Assistant (IDAA)
+# Intelligent Data Analysis Assistant (IDAA)
 
-A full-stack **Data Science mini-project** — a Flask web application that lets users
-upload a dataset (CSV/Excel) and instantly get automated exploratory data analysis
-(EDA), interactive visualizations, and a no-code filter/query builder, all wrapped
-in a polished, modern dark/light UI.
+A full-stack data-analysis application built with Flask. Upload a CSV or Excel file,
+clean it automatically, inspect data quality, filter and aggregate rows without code,
+build simple charts, and download a cleaned CSV or PDF report.
+
+The repository root is the canonical application. It is designed for local demos and
+small hosted deployments, with SQLite storage and per-user uploaded files.
 
 ---
 
@@ -18,11 +20,27 @@ in a polished, modern dark/light UI.
 | 📊 **Automated EDA** | Row/column counts, missing values, duplicates, dtype detection, column profiling |
 | 🧮 **No-Code Query Builder** | Filter rows with column/operator/value rules (AND logic) + paginated results |
 | 📈 **Group & Aggregate** | Group by any column and aggregate (sum/mean/count/max/min/median) with auto-chart |
-| 🎨 **Custom Chart Builder** | Build bar, line, scatter, pie, box and histogram charts on any columns |
-| 🌡️ **Correlation Heatmap** | Automatic correlation matrix for numeric columns |
+| 🎨 **Simple Chart Builder** | Build bar and line charts with aggregation on dataset columns |
+| 🧾 **Missing-Value Chart** | Bar chart of missing values before cleaning |
 | 📄 **PDF Report Export** | One-click polished PDF report (overview, data quality and column profile) |
 | 🌓 **Dark / Light Theme** | Toggle-able glassmorphism UI theme, persisted in local storage |
 | 📱 **Responsive UI** | Built with Bootstrap 5 + custom design system, works on mobile |
+
+### Data-cleaning behavior
+
+Cleaning runs before analysis and before the cleaned CSV is generated:
+
+1. Headers are trimmed, normalized, and made unique.
+2. Common missing markers such as blank strings, `NA`, `N/A`, `null`, and `--` are standardized as missing values.
+3. Text columns are trimmed and reliable numeric/date columns are converted.
+4. Explicit percentage strings such as `12.5%` are converted to decimal values such as `0.125`.
+5. Completely empty rows and columns are removed.
+6. Duplicate rows are removed before imputation so filling values cannot create new duplicate collisions.
+7. Remaining numeric values use the column median, dates use the median date, and text values use the most common value. Empty columns fall back to `0`, `1970-01-01`, or `Unknown` as appropriate.
+
+The analysis page reports missing values both **before** and **after** cleaning. The
+**Cleaned CSV** download uses the cleaned dataframe, so it contains no remaining
+missing values. Spreadsheet-formula-looking text is prefixed safely during export.
 
 ---
 
@@ -130,9 +148,10 @@ production use.
    ```bash
    python app.py
    ```
-   Or press **F5** in VS Code (a ready-made `.vscode/launch.json` is included —
-   just make sure the Python extension is installed and the interpreter is set
-   to `venv`).
+   Or run the project launcher from the terminal:
+   ```bash
+   ./run.sh
+   ```
 
 5. **Open your browser** at [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
@@ -150,13 +169,32 @@ production use.
    payment modes, prices, ratings, etc.)
 3. Land automatically on the **Analysis** page to see:
    - Row/column stats, missing values, duplicates
-   - Column profile table
-   - Correlation heatmap, distribution charts, category breakdowns
+   - Column profile table with before/after missing percentages and completeness status
+   - Missing-value chart showing the pre-cleaning quality issues
 4. Click **Query Builder** to filter rows (e.g. `City equals Mumbai` AND
    `TotalRevenue greater_than 5000`) or group by `ProductCategory` and sum
    `SalesAmount`.
-5. Click **Chart Builder** to build any custom chart on any columns.
+5. Click **Chart Builder** to build a simple bar or line chart.
 6. Click **Export PDF** to download a shareable summary report.
+
+### Chart scope
+
+The interactive Chart Builder intentionally keeps the presentation simple. It offers
+only bar charts and line charts, with sum, average, count, minimum, or maximum
+aggregation. The analysis page retains the missing-value bar chart because it is part
+of the data-quality workflow.
+
+### Testing
+
+Run the regression suite from the project root:
+
+```bash
+venv/bin/python -m unittest discover -s tests -v
+```
+
+The tests cover missing-value imputation, percentage calculations, empty-row
+handling, duplicate preservation, cleaned CSV output, group counts, PDF generation,
+and spreadsheet-safe export values.
 
 ---
 
@@ -177,6 +215,10 @@ production use.
 - Maximum upload size is 25 MB by default (configurable in `config.py`).
 - All passwords are hashed with Werkzeug's `generate_password_hash` — never
   stored in plain text.
+- Set a strong `SECRET_KEY` environment variable for hosted deployments. Production
+   startup fails if it is missing.
+- SQLite and local uploads are ephemeral on many free hosting platforms. Use a
+   persistent database, object storage, and a persistent disk for production use.
 
 ---
 

@@ -14,6 +14,7 @@ import uuid
 import io
 import secrets
 import hmac
+import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -30,6 +31,8 @@ import pandas as pd
 from config import Config
 from models import db, User, Dataset, QueryHistory, format_india_time
 from utils import eda, query_engine, report_generator
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # App / extensions setup
@@ -85,12 +88,18 @@ def get_owned_dataset_or_404(dataset_id):
 
 
 def load_dataset_dataframe(dataset):
+    df, _ = load_dataset_with_report(dataset)
+    return df
+
+
+def load_dataset_with_report(dataset):
     try:
-        return eda.load_dataframe(dataset.filepath)
+        return eda.load_dataframe_with_report(dataset.filepath)
     except FileNotFoundError:
         abort(404, description="The stored dataset file is missing.")
-    except (OSError, ValueError) as error:
-        abort(422, description=f"The dataset cannot be analyzed: {error}")
+    except (OSError, ValueError):
+        logger.exception("Stored dataset could not be analyzed: %s", dataset.filepath)
+        abort(422, description="The stored dataset could not be analyzed.")
 
 
 def is_safe_redirect(target):
@@ -218,9 +227,10 @@ def upload():
 
         try:
             df, cleaning_report = eda.load_dataframe_with_report(filepath)
-        except Exception as e:
+        except Exception:
+            logger.exception("Uploaded dataset could not be processed: %s", filepath)
             os.remove(filepath)
-            flash(f"Could not read the file: {e}", "danger")
+            flash("Could not read the file. Check its format and try again.", "danger")
             return redirect(url_for("upload"))
 
         dataset = Dataset(
@@ -262,17 +272,18 @@ def delete_dataset(dataset_id):
 @login_required
 def analysis(dataset_id):
     ds = get_owned_dataset_or_404(dataset_id)
-    df, cleaning_report = eda.load_dataframe_with_report(ds.filepath)
-    original_df = eda.load_raw_dataframe(ds.filepath)
-    _, original_report = eda.clean_dataframe(original_df)
+    df, cleaning_report = load_dataset_with_report(ds)
 
     overview = eda.basic_overview(df)
-    profiles = eda.column_profile(df, original_report.get("original_missing_by_column"))
+    profiles = eda.column_profile(
+        df,
+        cleaning_report.get("original_missing_by_column"),
+        cleaning_report.get("original_rows"),
+    )
 
-    missing_chart = eda.missing_value_chart(df)
-    corr_chart = eda.correlation_heatmap(df)
-    dist_charts = eda.numeric_distribution_charts(df)
-    cat_charts = eda.categorical_top_values(df)
+    missing_chart = eda.missing_value_chart(
+        missing_by_column=cleaning_report.get("original_missing_by_column")
+    )
 
     preview_rows = df.head(10).fillna("").to_dict(orient="records")
     preview_cols = df.columns.tolist()
@@ -280,8 +291,7 @@ def analysis(dataset_id):
     return render_template(
         "analysis.html",
         ds=ds, overview=overview, profiles=profiles,
-        missing_chart=missing_chart, corr_chart=corr_chart,
-        dist_charts=dist_charts, cat_charts=cat_charts,
+        missing_chart=missing_chart,
         preview_rows=preview_rows, preview_cols=preview_cols,
         cleaning_report=cleaning_report,
     )
@@ -293,7 +303,13 @@ def download_cleaned(dataset_id):
     ds = get_owned_dataset_or_404(dataset_id)
     df = load_dataset_dataframe(ds)
     filename = f"cleaned_{os.path.splitext(ds.original_name)[0]}.csv"
-    buffer = io.BytesIO(df.to_csv(index=False).encode("utf-8"))
+    def safe_csv_value(value):
+        if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+            return "'" + value
+        return value
+
+    safe_df = df.map(safe_csv_value)
+    buffer = io.BytesIO(safe_df.to_csv(index=False).encode("utf-8"))
     return send_file(buffer, mimetype="text/csv", as_attachment=True, download_name=filename)
 
 
@@ -322,6 +338,8 @@ def api_filter(dataset_id):
     filters = payload.get("filters", [])
     if not isinstance(filters, list):
         return jsonify({"error": "Filters must be a list."}), 400
+    if len(filters) > 20:
+        return jsonify({"error": "A maximum of 20 filters is allowed."}), 400
     try:
         page = max(1, int(payload.get("page", 1)))
     except (TypeError, ValueError):
@@ -387,10 +405,9 @@ def visualize(dataset_id):
     ds = get_owned_dataset_or_404(dataset_id)
     df = load_dataset_dataframe(ds)
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
-    categorical_cols = df.select_dtypes(include=["object", "category", "bool"]).columns.tolist()
     all_cols = df.columns.tolist()
     return render_template("visualize.html", ds=ds, all_cols=all_cols,
-                           numeric_cols=numeric_cols, categorical_cols=categorical_cols)
+                           numeric_cols=numeric_cols)
 
 
 @app.route("/api/chart/<int:dataset_id>", methods=["POST"])
@@ -407,17 +424,16 @@ def api_chart(dataset_id):
     y_col = payload.get("y_col") or None
     agg_func = payload.get("agg_func") or "sum"
 
-    valid_chart_types = {"bar", "line", "scatter", "pie", "box", "histogram"}
+    valid_chart_types = {"bar", "line"}
     valid_agg_funcs = {"sum", "mean", "count", "max", "min", "median"}
     if chart_type not in valid_chart_types or x_col not in df.columns:
         return jsonify({"error": "Invalid chart type or X-axis column."}), 400
-    if chart_type in {"bar", "line", "scatter", "box"} and y_col not in df.columns:
+    if chart_type in {"bar", "line"} and y_col not in df.columns:
         return jsonify({"error": "This chart requires a valid Y-axis column."}), 400
     if chart_type in {"bar", "line"} and agg_func not in valid_agg_funcs:
         return jsonify({"error": "Invalid aggregation function."}), 400
-    if chart_type in {"bar", "line", "scatter", "box"} and y_col:
-        if chart_type != "scatter" and agg_func != "count" and not pd.api.types.is_numeric_dtype(df[y_col]):
-            return jsonify({"error": "The selected Y-axis column must be numeric."}), 400
+    if agg_func != "count" and not pd.api.types.is_numeric_dtype(df[y_col]):
+        return jsonify({"error": "The selected Y-axis column must be numeric."}), 400
 
     chart = eda.build_custom_chart(df, chart_type, x_col, y_col, agg_func)
     return jsonify(chart), 400 if chart.get("error") else 200
@@ -430,10 +446,14 @@ def api_chart(dataset_id):
 @login_required
 def report(dataset_id):
     ds = get_owned_dataset_or_404(dataset_id)
-    df = load_dataset_dataframe(ds)
+    df, cleaning_report = load_dataset_with_report(ds)
 
     overview = eda.basic_overview(df)
-    profiles = eda.column_profile(df)
+    profiles = eda.column_profile(
+        df,
+        cleaning_report.get("original_missing_by_column"),
+        cleaning_report.get("original_rows"),
+    )
     buffer = report_generator.generate_pdf_report(
         ds.original_name, overview, profiles,
         generated_by=current_user.username

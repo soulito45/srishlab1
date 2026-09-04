@@ -52,7 +52,7 @@ def apply_group(df, group_col, agg_col, agg_func):
         return None
     try:
         if agg_func == "count":
-            grouped = df.groupby(group_col)[agg_col].count().reset_index(name="count")
+            grouped = df.groupby(group_col, dropna=False).size().reset_index(name="count")
             grouped = grouped.sort_values(by="count", ascending=False)
         else:
             grouped = df.groupby(group_col)[agg_col].agg(agg_func).reset_index()

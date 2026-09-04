@@ -36,7 +36,7 @@
     </div>
     <div class="col-6 col-md-3">
       <div class="stat-card">
-        <div class="stat-label">Missing Values</div>
+        <div class="stat-label">Missing After Cleaning</div>
         <div class="stat-value">{{ "{:,}".format(overview.total_missing) }}</div>
       </div>
     </div>
@@ -81,7 +81,7 @@
         <div class="table-scroll">
           <table class="idaa-table">
             <thead><tr>
-              <th>Column</th><th>Type</th><th>Missing before cleaning</th><th>Missing % before cleaning</th><th>Zeros</th><th>Unique</th><th>Stats</th>
+              <th>Column</th><th>Type</th><th>Missing before cleaning</th><th>Missing % before cleaning</th><th>Missing after cleaning</th><th>After %</th><th>Status</th><th>Zeros</th><th>Unique</th><th>Stats</th>
             </tr></thead>
             <tbody>
               {% for p in profiles %}
@@ -92,9 +92,12 @@
                 <td>
                   <div class="d-flex align-items-center gap-2">
                     <div class="progress progress-thin" style="width:70px;"><div class="progress-bar" style="width:{{ p.original_missing_pct }}%"></div></div>
-                    <span class="small">{{ p.original_missing_pct }}%</span>
+                    <span class="small">{{ "%.2f"|format(p.original_missing_pct) }}%</span>
                   </div>
                 </td>
+                <td>{{ p.missing }}</td>
+                <td><span class="small">{{ "%.2f"|format(p.missing_pct) }}%</span></td>
+                <td><span class="idaa-chip {% if p.complete %}text-success{% endif %}">{% if p.complete %}Complete{% else %}Incomplete{% endif %}</span></td>
                 <td>{{ p.zeros if p.zeros is defined else "-" }}</td>
                 <td>{{ p.unique }}</td>
                 <td class="small text-muted">
@@ -115,26 +118,11 @@
     <!-- Charts tab -->
     <div class="tab-pane fade" id="tab-charts">
       <div class="row g-3">
-        {% if corr_chart %}
-        <div class="col-lg-6">
-          <div class="chart-box"><div id="corrChart" style="width:100%;"></div></div>
-        </div>
-        {% endif %}
         {% if missing_chart %}
         <div class="col-lg-6">
           <div class="chart-box"><div id="missingChart" style="width:100%;"></div></div>
         </div>
         {% endif %}
-        {% for col, chart in dist_charts.items() %}
-        <div class="col-lg-6">
-          <div class="chart-box"><div id="dist-{{ loop.index }}" style="width:100%;"></div></div>
-        </div>
-        {% endfor %}
-        {% for col, chart in cat_charts.items() %}
-        <div class="col-lg-6">
-          <div class="chart-box"><div id="cat-{{ loop.index }}" style="width:100%;"></div></div>
-        </div>
-        {% endfor %}
       </div>
     </div>
 
@@ -160,13 +148,6 @@
 
 {% block extra_scripts %}
 <script>
-  {% if corr_chart %} renderPlot("corrChart", {{ corr_chart|tojson }}); {% endif %}
   {% if missing_chart %} renderPlot("missingChart", {{ missing_chart|tojson }}); {% endif %}
-  {% for col, chart in dist_charts.items() %}
-    renderPlot("dist-{{ loop.index }}", {{ chart|tojson }});
-  {% endfor %}
-  {% for col, chart in cat_charts.items() %}
-    renderPlot("cat-{{ loop.index }}", {{ chart|tojson }});
-  {% endfor %}
 </script>
 {% endblock %}
