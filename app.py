@@ -15,6 +15,7 @@ import io
 import secrets
 import hmac
 import logging
+import re
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -110,6 +111,14 @@ def is_safe_redirect(target):
     return not parsed.netloc or parsed.netloc == urlparse(request.host_url).netloc
 
 
+def is_valid_full_name(name):
+    return bool(name) and re.fullmatch(r"[A-Za-z][A-Za-z ]*", name.strip()) is not None
+
+
+def is_valid_username(username):
+    return bool(username) and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", username.strip()) is not None
+
+
 # ---------------------------------------------------------------------------
 # Public routes
 # ---------------------------------------------------------------------------
@@ -134,6 +143,14 @@ def register():
 
         if not username or not email or not password:
             flash("Please fill in all required fields.", "danger")
+            return render_template("register.html")
+
+        if full_name and not is_valid_full_name(full_name):
+            flash("Full name can contain only letters and spaces.", "danger")
+            return render_template("register.html")
+
+        if not is_valid_username(username):
+            flash("Username can contain only letters, numbers, and underscores, and must start with a letter.", "danger")
             return render_template("register.html")
 
         if password != confirm:

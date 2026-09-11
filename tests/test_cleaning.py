@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 
+import app
+
 from utils import eda
 from utils import query_engine
 from utils import report_generator
@@ -132,6 +134,13 @@ class CleaningPipelineTests(unittest.TestCase):
         exported = pd.read_csv(io.StringIO(safe.to_csv(index=False)))
 
         self.assertEqual(exported["label"].tolist(), ["'=SUM(1,1)", "'@cmd", "'-danger"])
+
+    def test_name_validation_rejects_disallowed_punctuation(self):
+        self.assertTrue(app.is_valid_full_name("Priya Sharma"))
+        self.assertTrue(app.is_valid_username("priya_sharma"))
+
+        self.assertFalse(app.is_valid_full_name("Priya, Sharma!"))
+        self.assertFalse(app.is_valid_username("priya.sharma!"))
 
 if __name__ == "__main__":
     unittest.main()
